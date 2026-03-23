@@ -98,6 +98,8 @@ class MainWindow(QMainWindow):
         self._search_results: list = []
         self._search_thread: Optional[QThread] = None
         self._search_worker: Optional[SearchWorker] = None
+        self._logged_in_username: Optional[str] = None
+        self._login_state: str = "logged_out"  # logged_out | logged_in | cookie_logged_in | failed | cookie_failed
 
         # Initialise the translator with the persisted language preference
         self._translator = Translator.instance()
@@ -421,6 +423,8 @@ class MainWindow(QMainWindow):
             self._app_status_bar.hide_progress()
 
             if ok:
+                self._logged_in_username = dlg.username
+                self._login_state = "logged_in"
                 self._login_status_label.setText(
                     tr("banner.logged_in", username=dlg.username)
                 )
@@ -429,6 +433,7 @@ class MainWindow(QMainWindow):
                 )
                 self._app_status_bar.set_message(tr("status.logged_in"))
             else:
+                self._login_state = "failed"
                 self._login_banner.setStyleSheet(
                     "background-color: #f8d7da; border-radius: 4px;"
                 )
@@ -453,12 +458,14 @@ class MainWindow(QMainWindow):
             self._app_status_bar.hide_progress()
 
             if ok:
+                self._login_state = "cookie_logged_in"
                 self._login_status_label.setText(tr("banner.cookie_logged_in"))
                 self._login_banner.setStyleSheet(
                     "background-color: #d4edda; border-radius: 4px;"
                 )
                 self._app_status_bar.set_message(tr("status.cookie_login_ok"))
             else:
+                self._login_state = "cookie_failed"
                 self._login_banner.setStyleSheet(
                     "background-color: #f8d7da; border-radius: 4px;"
                 )
@@ -472,6 +479,8 @@ class MainWindow(QMainWindow):
 
     def _logout(self) -> None:
         self._auth.logout()
+        self._login_state = "logged_out"
+        self._logged_in_username = None
         self._login_banner.setStyleSheet("background-color: #fff3cd; border-radius: 4px;")
         self._login_status_label.setText(tr("banner.not_logged_in"))
         self._app_status_bar.set_message(tr("status.logged_out"))
@@ -721,9 +730,17 @@ class MainWindow(QMainWindow):
         self._tabs.setTabText(1, tr("tab.history"))
         self._tabs.setTabText(2, tr("tab.settings"))
 
-        # Login banner (only update if currently showing the default message)
-        if not self._auth.is_logged_in:
-            self._login_status_label.setText(tr("banner.not_logged_in"))
+        # Login banner – update based on current login state
+        banner_text_map = {
+            "logged_out": lambda: tr("banner.not_logged_in"),
+            "logged_in": lambda: tr("banner.logged_in",
+                                    username=self._logged_in_username or ""),
+            "cookie_logged_in": lambda: tr("banner.cookie_logged_in"),
+            "failed": lambda: tr("banner.login_failed"),
+            "cookie_failed": lambda: tr("banner.cookie_login_failed"),
+        }
+        text_fn = banner_text_map.get(self._login_state, banner_text_map["logged_out"])
+        self._login_status_label.setText(text_fn())
         self._banner_login_btn.setText(tr("banner.login_btn"))
 
         # Search tab

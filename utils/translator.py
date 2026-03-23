@@ -412,8 +412,8 @@ class Translator(QObject):
         if kwargs:
             try:
                 text = text.format(**kwargs)
-            except KeyError:
-                pass
+            except KeyError as exc:
+                logger.warning("Missing placeholder %s in translation key '%s'", exc, key)
         return text
 
 

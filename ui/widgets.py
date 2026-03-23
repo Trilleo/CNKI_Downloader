@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QFont
 
+from utils.translator import tr
+
 
 class StatusBar(QWidget):
     """A thin status bar that shows a text message and an optional progress bar."""
@@ -21,7 +23,6 @@ class StatusBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 6, 2)
 
-        from utils.translator import tr
         self._label = QLabel(tr("status.ready"))
         self._label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
