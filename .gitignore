@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Downloads (user data)
+downloads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Chromedriver / webdriver binaries
+chromedriver
+geckodriver
