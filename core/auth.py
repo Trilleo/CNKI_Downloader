@@ -6,7 +6,7 @@ and reused for all subsequent scraping / download requests.
 """
 
 import time
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
@@ -122,6 +122,67 @@ class AuthManager:
 
         except WebDriverException as exc:
             logger.error("WebDriver error during login: %s", exc)
+            return False
+
+    def login_with_cookies(self, cookies: List[Dict[str, Any]], target_url: str = "") -> bool:
+        """
+        Authenticate by injecting browser cookies into the WebDriver session.
+
+        *cookies* is a list of cookie dicts, each containing at least ``name``
+        and ``value`` keys (and optionally ``domain``, ``path``, ``secure``,
+        etc.).  The method navigates to CNKI so that the domain matches, adds
+        the cookies, then reloads the page and verifies the session.
+
+        Returns *True* on success, *False* on failure.
+        """
+        target_url = target_url or self._settings.get(
+            "school_portal_url", config.CNKI_BASE_URL
+        )
+        logger.info("Attempting cookie-based login to %s", target_url)
+
+        if not cookies:
+            logger.error("No cookies provided")
+            return False
+
+        try:
+            self._ensure_driver()
+
+            # Navigate to the target domain first – Selenium requires an
+            # active page on the same domain before cookies can be set.
+            self._driver.get(target_url)
+            time.sleep(config.PAGE_LOAD_SLEEP)
+
+            # Inject each cookie into the driver session.
+            for cookie in cookies:
+                # Selenium expects at minimum 'name' and 'value'.
+                if "name" not in cookie or "value" not in cookie:
+                    logger.debug("Skipping malformed cookie: %s", cookie)
+                    continue
+                # Build a clean cookie dict accepted by Selenium.
+                clean = {"name": cookie["name"], "value": cookie["value"]}
+                for optional_key in ("domain", "path", "secure", "httpOnly", "expiry"):
+                    if optional_key in cookie:
+                        clean[optional_key] = cookie[optional_key]
+                try:
+                    self._driver.add_cookie(clean)
+                except WebDriverException as exc:
+                    logger.debug("Could not add cookie %s: %s", cookie["name"], exc)
+
+            # Reload so the server sees the new cookies.
+            self._driver.get(target_url)
+            time.sleep(config.PAGE_LOAD_SLEEP)
+
+            self._logged_in = self._verify_login()
+            if self._logged_in:
+                logger.info("Cookie-based login successful")
+            else:
+                logger.warning(
+                    "Cookie-based login may have failed – could not verify session"
+                )
+            return self._logged_in
+
+        except WebDriverException as exc:
+            logger.error("WebDriver error during cookie login: %s", exc)
             return False
 
     def logout(self) -> None:
