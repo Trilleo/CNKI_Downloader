@@ -3,6 +3,7 @@ Dialog windows for CNKI Downloader.
 """
 
 import os
+from typing import Dict, List
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QTextEdit,
     QVBoxLayout,
     QCheckBox,
     QSpinBox,
@@ -118,6 +120,94 @@ class LoginDialog(QDialog):
     @property
     def portal_url(self) -> str:
         return self._portal_edit.text().strip()
+
+
+# ── Cookie login dialog ──────────────────────────────────────────────────────
+
+def _parse_cookie_string(raw: str) -> List[Dict[str, str]]:
+    """Parse a cookie header string (``name=value; name2=value2``) into a list
+    of dicts suitable for Selenium's ``add_cookie``."""
+    cookies: List[Dict[str, str]] = []
+    for pair in raw.split(";"):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        name, _, value = pair.partition("=")
+        name = name.strip()
+        value = value.strip()
+        if name:
+            cookies.append({"name": name, "value": value})
+    return cookies
+
+
+class CookieLoginDialog(QDialog):
+    """Dialog that lets users paste browser cookies to authenticate."""
+
+    def __init__(self, settings, parent=None) -> None:
+        super().__init__(parent)
+        self._settings = settings
+        self.setWindowTitle("Login with Browser Cookies")
+        self.setMinimumWidth(520)
+        self._cookies: List[Dict[str, str]] = []
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+
+        title = QLabel("<b>Paste cookies from your browser</b>")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        instructions = QLabel(
+            "Open your browser where you are already logged in to CNKI, "
+            "copy the cookie header value from the developer tools "
+            "(Network tab → any request → <i>Cookie</i> header), "
+            "and paste it below.\n\n"
+            "Expected format: <code>name1=value1; name2=value2; …</code>"
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+
+        self._cookie_edit = QTextEdit()
+        self._cookie_edit.setPlaceholderText("name1=value1; name2=value2; …")
+        self._cookie_edit.setMinimumHeight(100)
+        layout.addWidget(self._cookie_edit)
+
+        self._status_label = QLabel("")
+        self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._status_label.setStyleSheet("color: red;")
+        layout.addWidget(self._status_label)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept(self) -> None:
+        raw = self._cookie_edit.toPlainText().strip()
+        if not raw:
+            self._status_label.setText("Please paste your cookie string.")
+            return
+
+        parsed = _parse_cookie_string(raw)
+        if not parsed:
+            self._status_label.setText(
+                "Could not parse any cookies. "
+                "Use the format: name=value; name2=value2"
+            )
+            return
+
+        self._cookies = parsed
+        super().accept()
+
+    # ── Accessors ────────────────────────────────────────────────────────────
+
+    @property
+    def cookies(self) -> List[Dict[str, str]]:
+        """Parsed list of cookie dicts (each with *name* and *value*)."""
+        return self._cookies
 
 
 # ── Settings dialog ───────────────────────────────────────────────────────────

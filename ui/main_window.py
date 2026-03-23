@@ -44,7 +44,7 @@ from core.cnki_scraper import CNKIScraper
 from core.downloader import DownloadManager
 from utils.history import HistoryManager
 from utils.logger import get_logger
-from ui.dialogs import LoginDialog, SettingsDialog, DownloadProgressDialog
+from ui.dialogs import LoginDialog, CookieLoginDialog, SettingsDialog, DownloadProgressDialog
 from ui.widgets import StatusBar as AppStatusBar, SectionLabel
 
 logger = get_logger("cnki_downloader.main_window")
@@ -115,6 +115,10 @@ class MainWindow(QMainWindow):
         login_action = QAction("&Login…", self)
         login_action.triggered.connect(self._open_login_dialog)
         file_menu.addAction(login_action)
+
+        cookie_login_action = QAction("Login with &Cookies…", self)
+        cookie_login_action.triggered.connect(self._open_cookie_login_dialog)
+        file_menu.addAction(cookie_login_action)
 
         logout_action = QAction("Log&out", self)
         logout_action.triggered.connect(self._logout)
@@ -403,6 +407,41 @@ class MainWindow(QMainWindow):
                     self,
                     "Login Failed",
                     "Could not log in. Please check your credentials and portal URL in Settings.",
+                )
+
+    def _open_cookie_login_dialog(self) -> None:
+        dlg = CookieLoginDialog(self._settings, parent=self)
+        if dlg.exec() == CookieLoginDialog.DialogCode.Accepted:
+            self._app_status_bar.set_message("Logging in with cookies…")
+            self._app_status_bar.show_progress(0, 0)
+            self.setEnabled(False)
+            self.repaint()
+
+            ok = self._auth.login_with_cookies(dlg.cookies)
+            self.setEnabled(True)
+            self._app_status_bar.hide_progress()
+
+            if ok:
+                self._login_status_label.setText(
+                    "✅  Logged in via browser cookies"
+                )
+                self._login_banner.setStyleSheet(
+                    "background-color: #d4edda; border-radius: 4px;"
+                )
+                self._app_status_bar.set_message("Cookie login successful.")
+            else:
+                self._login_banner.setStyleSheet(
+                    "background-color: #f8d7da; border-radius: 4px;"
+                )
+                self._login_status_label.setText(
+                    "❌  Cookie login failed – cookies may be expired or invalid"
+                )
+                self._app_status_bar.set_message("Cookie login failed.")
+                QMessageBox.warning(
+                    self,
+                    "Cookie Login Failed",
+                    "Could not log in with the provided cookies.\n"
+                    "They may be expired or not contain the required session data.",
                 )
 
     def _logout(self) -> None:
