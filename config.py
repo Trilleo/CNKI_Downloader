@@ -48,6 +48,7 @@ DEFAULT_SETTINGS = {
     "save_credentials": False,
     "headless_browser": True,
     "log_level": "INFO",
+    "language": "en",
 }
 
 # ─── Browser ───────────────────────────────────────────────────────────────────

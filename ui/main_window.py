@@ -11,7 +11,7 @@ import os
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QActionGroup
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -44,6 +44,7 @@ from core.cnki_scraper import CNKIScraper
 from core.downloader import DownloadManager
 from utils.history import HistoryManager
 from utils.logger import get_logger
+from utils.translator import Translator, tr, SUPPORTED_LANGUAGES
 from ui.dialogs import LoginDialog, CookieLoginDialog, SettingsDialog, DownloadProgressDialog
 from ui.widgets import StatusBar as AppStatusBar, SectionLabel
 
@@ -97,6 +98,15 @@ class MainWindow(QMainWindow):
         self._search_results: list = []
         self._search_thread: Optional[QThread] = None
         self._search_worker: Optional[SearchWorker] = None
+        self._logged_in_username: Optional[str] = None
+        self._login_state: str = "logged_out"  # logged_out | logged_in | cookie_logged_in | failed | cookie_failed
+
+        # Initialise the translator with the persisted language preference
+        self._translator = Translator.instance()
+        saved_lang = self._settings.get("language", "en")
+        if saved_lang != self._translator.language:
+            self._translator.set_language(saved_lang)
+        self._translator.language_changed.connect(self._on_language_changed)
 
         self.setWindowTitle(config.APP_NAME)
         self.setMinimumSize(900, 660)
@@ -111,34 +121,48 @@ class MainWindow(QMainWindow):
         mb = self.menuBar()
 
         # File
-        file_menu = mb.addMenu("&File")
-        login_action = QAction("&Login…", self)
-        login_action.triggered.connect(self._open_login_dialog)
-        file_menu.addAction(login_action)
+        self._file_menu = mb.addMenu(tr("menu.file"))
+        self._login_action = QAction(tr("menu.file.login"), self)
+        self._login_action.triggered.connect(self._open_login_dialog)
+        self._file_menu.addAction(self._login_action)
 
-        cookie_login_action = QAction("Login with &Cookies…", self)
-        cookie_login_action.triggered.connect(self._open_cookie_login_dialog)
-        file_menu.addAction(cookie_login_action)
+        self._cookie_login_action = QAction(tr("menu.file.cookie_login"), self)
+        self._cookie_login_action.triggered.connect(self._open_cookie_login_dialog)
+        self._file_menu.addAction(self._cookie_login_action)
 
-        logout_action = QAction("Log&out", self)
-        logout_action.triggered.connect(self._logout)
-        file_menu.addAction(logout_action)
+        self._logout_action = QAction(tr("menu.file.logout"), self)
+        self._logout_action.triggered.connect(self._logout)
+        self._file_menu.addAction(self._logout_action)
 
-        file_menu.addSeparator()
-        settings_action = QAction("&Settings…", self)
-        settings_action.triggered.connect(self._open_settings_dialog)
-        file_menu.addAction(settings_action)
+        self._file_menu.addSeparator()
+        self._settings_action = QAction(tr("menu.file.settings"), self)
+        self._settings_action.triggered.connect(self._open_settings_dialog)
+        self._file_menu.addAction(self._settings_action)
 
-        file_menu.addSeparator()
-        quit_action = QAction("&Quit", self)
-        quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
+        self._file_menu.addSeparator()
+        self._quit_action = QAction(tr("menu.file.quit"), self)
+        self._quit_action.triggered.connect(self.close)
+        self._file_menu.addAction(self._quit_action)
+
+        # Language
+        self._language_menu = mb.addMenu(tr("menu.language"))
+        self._lang_action_group = QActionGroup(self)
+        self._lang_actions: dict[str, QAction] = {}
+        for lang_code in SUPPORTED_LANGUAGES:
+            action = QAction(tr(f"lang.{lang_code}"), self)
+            action.setCheckable(True)
+            action.setChecked(lang_code == self._translator.language)
+            action.setData(lang_code)
+            action.triggered.connect(self._on_language_action_triggered)
+            self._lang_action_group.addAction(action)
+            self._language_menu.addAction(action)
+            self._lang_actions[lang_code] = action
 
         # Help
-        help_menu = mb.addMenu("&Help")
-        about_action = QAction("&About", self)
-        about_action.triggered.connect(self._show_about)
-        help_menu.addAction(about_action)
+        self._help_menu = mb.addMenu(tr("menu.help"))
+        self._about_action = QAction(tr("menu.help.about"), self)
+        self._about_action.triggered.connect(self._show_about)
+        self._help_menu.addAction(self._about_action)
 
     # ── Central widget ────────────────────────────────────────────────────────
 
@@ -153,23 +177,23 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self._login_banner)
 
         # Tabs
-        tabs = QTabWidget()
-        tabs.addTab(self._build_search_tab(), "🔍  Search")
-        tabs.addTab(self._build_history_tab(), "📋  History")
-        tabs.addTab(self._build_settings_tab(), "⚙  Settings")
-        root_layout.addWidget(tabs, stretch=1)
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._build_search_tab(), tr("tab.search"))
+        self._tabs.addTab(self._build_history_tab(), tr("tab.history"))
+        self._tabs.addTab(self._build_settings_tab(), tr("tab.settings"))
+        root_layout.addWidget(self._tabs, stretch=1)
 
     def _make_login_banner(self) -> QWidget:
         banner = QWidget()
         banner.setStyleSheet("background-color: #fff3cd; border-radius: 4px;")
         h = QHBoxLayout(banner)
         h.setContentsMargins(12, 6, 12, 6)
-        self._login_status_label = QLabel("⚠  Not logged in – please log in via File → Login…")
+        self._login_status_label = QLabel(tr("banner.not_logged_in"))
         h.addWidget(self._login_status_label, stretch=1)
-        login_btn = QPushButton("Login")
-        login_btn.setFixedWidth(80)
-        login_btn.clicked.connect(self._open_login_dialog)
-        h.addWidget(login_btn)
+        self._banner_login_btn = QPushButton(tr("banner.login_btn"))
+        self._banner_login_btn.setFixedWidth(80)
+        self._banner_login_btn.clicked.connect(self._open_login_dialog)
+        h.addWidget(self._banner_login_btn)
         return banner
 
     # ── Search tab ────────────────────────────────────────────────────────────
@@ -180,11 +204,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
 
         # ── Search form ──────────────────────────────────────────────────────
-        form_group = QGroupBox("Search Parameters")
-        form_layout = QVBoxLayout(form_group)
+        self._search_form_group = QGroupBox(tr("search.parameters"))
+        form_layout = QVBoxLayout(self._search_form_group)
 
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Search method:"))
+        self._method_label = QLabel(tr("search.method"))
+        row1.addWidget(self._method_label)
         self._method_combo = QComboBox()
         self._method_combo.addItems(config.SEARCH_METHODS)
         default_method = self._settings.get("default_search_method", "Keywords")
@@ -197,23 +222,26 @@ class MainWindow(QMainWindow):
         form_layout.addLayout(row1)
 
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Query:"))
+        self._query_label = QLabel(tr("search.query"))
+        row2.addWidget(self._query_label)
         self._query_edit = QLineEdit()
-        self._query_edit.setPlaceholderText("Enter search terms…")
+        self._query_edit.setPlaceholderText(tr("search.query_placeholder"))
         self._query_edit.returnPressed.connect(self._do_search)
         row2.addWidget(self._query_edit, stretch=1)
         form_layout.addLayout(row2)
 
         # Year range filter
         year_row = QHBoxLayout()
-        year_row.addWidget(QLabel("Year from:"))
+        self._year_from_label = QLabel(tr("search.year_from"))
+        year_row.addWidget(self._year_from_label)
         self._year_from_edit = QLineEdit()
-        self._year_from_edit.setPlaceholderText("e.g. 2010")
+        self._year_from_edit.setPlaceholderText(tr("search.year_from_placeholder"))
         self._year_from_edit.setFixedWidth(80)
         year_row.addWidget(self._year_from_edit)
-        year_row.addWidget(QLabel("to:"))
+        self._year_to_label = QLabel(tr("search.year_to"))
+        year_row.addWidget(self._year_to_label)
         self._year_to_edit = QLineEdit()
-        self._year_to_edit.setPlaceholderText("e.g. 2024")
+        self._year_to_edit.setPlaceholderText(tr("search.year_to_placeholder"))
         self._year_to_edit.setFixedWidth(80)
         year_row.addWidget(self._year_to_edit)
         year_row.addStretch()
@@ -221,7 +249,8 @@ class MainWindow(QMainWindow):
 
         # Max results
         max_row = QHBoxLayout()
-        max_row.addWidget(QLabel("Max results:"))
+        self._max_results_label = QLabel(tr("search.max_results"))
+        max_row.addWidget(self._max_results_label)
         self._max_results_spin = QSpinBox()
         self._max_results_spin.setRange(5, 100)
         self._max_results_spin.setSingleStep(5)
@@ -232,7 +261,7 @@ class MainWindow(QMainWindow):
 
         # Search button row
         btn_row = QHBoxLayout()
-        self._search_btn = QPushButton("Search")
+        self._search_btn = QPushButton(tr("search.search_btn"))
         self._search_btn.setFixedWidth(100)
         self._search_btn.clicked.connect(self._do_search)
         self._search_btn.setDefault(True)
@@ -240,15 +269,16 @@ class MainWindow(QMainWindow):
         btn_row.addWidget(self._search_btn)
         form_layout.addLayout(btn_row)
 
-        layout.addWidget(form_group)
+        layout.addWidget(self._search_form_group)
 
         # ── Results table ────────────────────────────────────────────────────
-        results_group = QGroupBox("Results")
-        results_layout = QVBoxLayout(results_group)
+        self._results_group = QGroupBox(tr("results.title"))
+        results_layout = QVBoxLayout(self._results_group)
 
         self._results_table = QTableWidget(0, 5)
         self._results_table.setHorizontalHeaderLabels(
-            ["", "Title", "Authors", "Journal", "Year"]
+            ["", tr("results.col.title"), tr("results.col.authors"),
+             tr("results.col.journal"), tr("results.col.year")]
         )
         self._results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -262,25 +292,25 @@ class MainWindow(QMainWindow):
 
         # Select all / download buttons
         dl_row = QHBoxLayout()
-        self._select_all_btn = QPushButton("Select all")
+        self._select_all_btn = QPushButton(tr("results.select_all"))
         self._select_all_btn.setFixedWidth(100)
         self._select_all_btn.clicked.connect(self._select_all_results)
         dl_row.addWidget(self._select_all_btn)
 
-        self._deselect_all_btn = QPushButton("Deselect all")
+        self._deselect_all_btn = QPushButton(tr("results.deselect_all"))
         self._deselect_all_btn.setFixedWidth(100)
         self._deselect_all_btn.clicked.connect(self._deselect_all_results)
         dl_row.addWidget(self._deselect_all_btn)
 
         dl_row.addStretch()
 
-        self._download_btn = QPushButton("⬇  Download selected")
+        self._download_btn = QPushButton(tr("results.download_selected"))
         self._download_btn.setFixedWidth(180)
         self._download_btn.clicked.connect(self._download_selected)
         dl_row.addWidget(self._download_btn)
 
         results_layout.addLayout(dl_row)
-        layout.addWidget(results_group, stretch=1)
+        layout.addWidget(self._results_group, stretch=1)
 
         return widget
 
@@ -292,7 +322,10 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
 
         self._history_table = QTableWidget(0, 4)
-        self._history_table.setHorizontalHeaderLabels(["Date", "Method", "Query", "Results"])
+        self._history_table.setHorizontalHeaderLabels(
+            [tr("history.col.date"), tr("history.col.method"),
+             tr("history.col.query"), tr("history.col.results")]
+        )
         self._history_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self._history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -301,17 +334,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._history_table)
 
         btn_row = QHBoxLayout()
-        reload_btn = QPushButton("Reload history")
-        reload_btn.clicked.connect(self._refresh_history_table)
-        btn_row.addWidget(reload_btn)
+        self._reload_history_btn = QPushButton(tr("history.reload"))
+        self._reload_history_btn.clicked.connect(self._refresh_history_table)
+        btn_row.addWidget(self._reload_history_btn)
 
-        delete_btn = QPushButton("Delete selected")
-        delete_btn.clicked.connect(self._delete_history_entry)
-        btn_row.addWidget(delete_btn)
+        self._delete_history_btn = QPushButton(tr("history.delete"))
+        self._delete_history_btn.clicked.connect(self._delete_history_entry)
+        btn_row.addWidget(self._delete_history_btn)
 
-        clear_btn = QPushButton("Clear all")
-        clear_btn.clicked.connect(self._clear_history)
-        btn_row.addWidget(clear_btn)
+        self._clear_history_btn = QPushButton(tr("history.clear"))
+        self._clear_history_btn.clicked.connect(self._clear_history)
+        btn_row.addWidget(self._clear_history_btn)
 
         btn_row.addStretch()
         layout.addLayout(btn_row)
@@ -331,13 +364,11 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        layout.addWidget(SectionLabel("Quick Settings"))
-        note = QLabel(
-            "For full settings, use <b>File → Settings…</b>. "
-            "Changes here are saved immediately."
-        )
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        self._settings_section_label = SectionLabel(tr("settings.quick_settings"))
+        layout.addWidget(self._settings_section_label)
+        self._settings_note_label = QLabel(tr("settings.note"))
+        self._settings_note_label.setWordWrap(True)
+        layout.addWidget(self._settings_note_label)
 
         form = QFormLayout()
 
@@ -347,11 +378,12 @@ class MainWindow(QMainWindow):
             self._settings.get("download_dir", config.DEFAULT_SETTINGS["download_dir"])
         )
         self._settings_dir_edit.setReadOnly(True)
-        browse_btn = QPushButton("Browse…")
-        browse_btn.clicked.connect(self._browse_download_dir)
+        self._settings_browse_btn = QPushButton(tr("settings.browse"))
+        self._settings_browse_btn.clicked.connect(self._browse_download_dir)
         dir_row.addWidget(self._settings_dir_edit, stretch=1)
-        dir_row.addWidget(browse_btn)
-        form.addRow("Download directory:", dir_row)
+        dir_row.addWidget(self._settings_browse_btn)
+        self._settings_dir_label = QLabel(tr("settings.download_dir"))
+        form.addRow(self._settings_dir_label, dir_row)
 
         # Headless
         self._settings_headless_cb = QCheckBox()
@@ -359,7 +391,8 @@ class MainWindow(QMainWindow):
         self._settings_headless_cb.toggled.connect(
             lambda v: self._settings.set("headless_browser", v)
         )
-        form.addRow("Headless browser:", self._settings_headless_cb)
+        self._settings_headless_label = QLabel(tr("settings.headless"))
+        form.addRow(self._settings_headless_label, self._settings_headless_cb)
 
         layout.addLayout(form)
 
@@ -380,7 +413,7 @@ class MainWindow(QMainWindow):
     def _open_login_dialog(self) -> None:
         dlg = LoginDialog(self._settings, parent=self)
         if dlg.exec() == LoginDialog.DialogCode.Accepted:
-            self._app_status_bar.set_message("Logging in…")
+            self._app_status_bar.set_message(tr("status.logging_in"))
             self._app_status_bar.show_progress(0, 0)
             self.setEnabled(False)
             self.repaint()
@@ -390,29 +423,32 @@ class MainWindow(QMainWindow):
             self._app_status_bar.hide_progress()
 
             if ok:
+                self._logged_in_username = dlg.username
+                self._login_state = "logged_in"
                 self._login_status_label.setText(
-                    f"✅  Logged in as {dlg.username}"
+                    tr("banner.logged_in", username=dlg.username)
                 )
                 self._login_banner.setStyleSheet(
                     "background-color: #d4edda; border-radius: 4px;"
                 )
-                self._app_status_bar.set_message("Logged in successfully.")
+                self._app_status_bar.set_message(tr("status.logged_in"))
             else:
+                self._login_state = "failed"
                 self._login_banner.setStyleSheet(
                     "background-color: #f8d7da; border-radius: 4px;"
                 )
-                self._login_status_label.setText("❌  Login failed – check credentials or portal URL")
-                self._app_status_bar.set_message("Login failed.")
+                self._login_status_label.setText(tr("banner.login_failed"))
+                self._app_status_bar.set_message(tr("status.login_failed"))
                 QMessageBox.warning(
                     self,
-                    "Login Failed",
-                    "Could not log in. Please check your credentials and portal URL in Settings.",
+                    tr("msg.login_failed_title"),
+                    tr("msg.login_failed"),
                 )
 
     def _open_cookie_login_dialog(self) -> None:
         dlg = CookieLoginDialog(self._settings, parent=self)
         if dlg.exec() == CookieLoginDialog.DialogCode.Accepted:
-            self._app_status_bar.set_message("Logging in with cookies…")
+            self._app_status_bar.set_message(tr("status.logging_in_cookies"))
             self._app_status_bar.show_progress(0, 0)
             self.setEnabled(False)
             self.repaint()
@@ -422,33 +458,32 @@ class MainWindow(QMainWindow):
             self._app_status_bar.hide_progress()
 
             if ok:
-                self._login_status_label.setText(
-                    "✅  Logged in via browser cookies"
-                )
+                self._login_state = "cookie_logged_in"
+                self._login_status_label.setText(tr("banner.cookie_logged_in"))
                 self._login_banner.setStyleSheet(
                     "background-color: #d4edda; border-radius: 4px;"
                 )
-                self._app_status_bar.set_message("Cookie login successful.")
+                self._app_status_bar.set_message(tr("status.cookie_login_ok"))
             else:
+                self._login_state = "cookie_failed"
                 self._login_banner.setStyleSheet(
                     "background-color: #f8d7da; border-radius: 4px;"
                 )
-                self._login_status_label.setText(
-                    "❌  Cookie login failed – cookies may be expired or invalid"
-                )
-                self._app_status_bar.set_message("Cookie login failed.")
+                self._login_status_label.setText(tr("banner.cookie_login_failed"))
+                self._app_status_bar.set_message(tr("status.cookie_login_failed"))
                 QMessageBox.warning(
                     self,
-                    "Cookie Login Failed",
-                    "Could not log in with the provided cookies.\n"
-                    "They may be expired or not contain the required session data.",
+                    tr("msg.cookie_login_failed_title"),
+                    tr("msg.cookie_login_failed"),
                 )
 
     def _logout(self) -> None:
         self._auth.logout()
+        self._login_state = "logged_out"
+        self._logged_in_username = None
         self._login_banner.setStyleSheet("background-color: #fff3cd; border-radius: 4px;")
-        self._login_status_label.setText("⚠  Not logged in – please log in via File → Login…")
-        self._app_status_bar.set_message("Logged out.")
+        self._login_status_label.setText(tr("banner.not_logged_in"))
+        self._app_status_bar.set_message(tr("status.logged_out"))
 
     # ── Slots: settings ───────────────────────────────────────────────────────
 
@@ -459,7 +494,7 @@ class MainWindow(QMainWindow):
     def _browse_download_dir(self) -> None:
         from PyQt6.QtWidgets import QFileDialog
         current = self._settings_dir_edit.text() or os.path.expanduser("~")
-        chosen = QFileDialog.getExistingDirectory(self, "Select download directory", current)
+        chosen = QFileDialog.getExistingDirectory(self, tr("settings.select_dir"), current)
         if chosen:
             self._settings_dir_edit.setText(chosen)
             self._settings.set("download_dir", chosen)
@@ -472,13 +507,13 @@ class MainWindow(QMainWindow):
 
         if not self._auth.is_logged_in:
             QMessageBox.information(
-                self, "Login Required", "Please log in before searching."
+                self, tr("msg.login_required_title"), tr("msg.login_required")
             )
             return
 
         query = self._query_edit.text().strip()
         if not query:
-            QMessageBox.information(self, "Empty Query", "Please enter a search term.")
+            QMessageBox.information(self, tr("msg.empty_query_title"), tr("msg.empty_query"))
             return
 
         method = self._method_combo.currentText()
@@ -487,8 +522,8 @@ class MainWindow(QMainWindow):
         max_results = self._max_results_spin.value()
 
         self._search_btn.setEnabled(False)
-        self._search_btn.setText("Searching…")
-        self._app_status_bar.set_message(f'Searching for "{query}"…')
+        self._search_btn.setText(tr("search.searching_btn"))
+        self._app_status_bar.set_message(tr("status.searching", query=query))
         self._app_status_bar.show_progress(0, 0)
 
         self._search_worker = SearchWorker(
@@ -506,9 +541,9 @@ class MainWindow(QMainWindow):
     def _on_search_finished(self, results: list) -> None:
         self._search_results = results
         self._search_btn.setEnabled(True)
-        self._search_btn.setText("Search")
+        self._search_btn.setText(tr("search.search_btn"))
         self._app_status_bar.hide_progress()
-        self._app_status_bar.set_message(f"Found {len(results)} results.")
+        self._app_status_bar.set_message(tr("status.found_results", count=len(results)))
 
         # Save to history
         self._history.add(
@@ -526,10 +561,11 @@ class MainWindow(QMainWindow):
 
     def _on_search_error(self, message: str) -> None:
         self._search_btn.setEnabled(True)
-        self._search_btn.setText("Search")
+        self._search_btn.setText(tr("search.search_btn"))
         self._app_status_bar.hide_progress()
-        self._app_status_bar.set_message("Search failed.")
-        QMessageBox.critical(self, "Search Error", f"Search failed:\n{message}")
+        self._app_status_bar.set_message(tr("status.search_failed"))
+        QMessageBox.critical(self, tr("msg.search_error_title"),
+                             tr("msg.search_error", message=message))
 
     def _populate_results_table(self, results: list) -> None:
         self._results_table.setRowCount(0)
@@ -572,13 +608,13 @@ class MainWindow(QMainWindow):
 
         if not selected_papers:
             QMessageBox.information(
-                self, "No Selection", "Please check at least one paper to download."
+                self, tr("msg.no_selection_title"), tr("msg.no_selection")
             )
             return
 
         if self._downloader.is_running:
             QMessageBox.information(
-                self, "Busy", "A download is already in progress. Please wait."
+                self, tr("msg.busy_title"), tr("msg.busy")
             )
             return
 
@@ -594,7 +630,7 @@ class MainWindow(QMainWindow):
             },
         )
         self._app_status_bar.set_message(
-            f"Downloading {len(selected_papers)} paper(s)…"
+            tr("status.downloading", count=len(selected_papers))
         )
 
     # ── Slots: history ────────────────────────────────────────────────────────
@@ -631,9 +667,7 @@ class MainWindow(QMainWindow):
         self._query_edit.setText(query_item.text())
 
         # Switch to search tab (index 0)
-        tabs = self.findChild(QTabWidget)
-        if tabs:
-            tabs.setCurrentIndex(0)
+        self._tabs.setCurrentIndex(0)
 
         self._do_search()
 
@@ -652,23 +686,114 @@ class MainWindow(QMainWindow):
     def _clear_history(self) -> None:
         reply = QMessageBox.question(
             self,
-            "Clear History",
-            "Are you sure you want to delete all search history?",
+            tr("history.clear_confirm_title"),
+            tr("history.clear_confirm_msg"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._history.clear()
             self._refresh_history_table()
 
+    # ── Slots: language ─────────────────────────────────────────────────────
+
+    def _on_language_action_triggered(self) -> None:
+        action = self.sender()
+        if action:
+            lang = action.data()
+            self._translator.set_language(lang)
+            self._settings.set("language", lang)
+
+    def _on_language_changed(self, lang: str) -> None:
+        """Update all visible UI text after a language switch."""
+        self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        """Re-apply translated strings to every stored widget reference."""
+        # Menu bar
+        self._file_menu.setTitle(tr("menu.file"))
+        self._login_action.setText(tr("menu.file.login"))
+        self._cookie_login_action.setText(tr("menu.file.cookie_login"))
+        self._logout_action.setText(tr("menu.file.logout"))
+        self._settings_action.setText(tr("menu.file.settings"))
+        self._quit_action.setText(tr("menu.file.quit"))
+        self._language_menu.setTitle(tr("menu.language"))
+        self._help_menu.setTitle(tr("menu.help"))
+        self._about_action.setText(tr("menu.help.about"))
+
+        # Language radio items (label text stays the same but update check)
+        for lang_code, action in self._lang_actions.items():
+            action.setText(tr(f"lang.{lang_code}"))
+            action.setChecked(lang_code == self._translator.language)
+
+        # Tabs
+        self._tabs.setTabText(0, tr("tab.search"))
+        self._tabs.setTabText(1, tr("tab.history"))
+        self._tabs.setTabText(2, tr("tab.settings"))
+
+        # Login banner – update based on current login state
+        banner_text_map = {
+            "logged_out": lambda: tr("banner.not_logged_in"),
+            "logged_in": lambda: tr("banner.logged_in",
+                                    username=self._logged_in_username or ""),
+            "cookie_logged_in": lambda: tr("banner.cookie_logged_in"),
+            "failed": lambda: tr("banner.login_failed"),
+            "cookie_failed": lambda: tr("banner.cookie_login_failed"),
+        }
+        text_fn = banner_text_map.get(self._login_state, banner_text_map["logged_out"])
+        self._login_status_label.setText(text_fn())
+        self._banner_login_btn.setText(tr("banner.login_btn"))
+
+        # Search tab
+        self._search_form_group.setTitle(tr("search.parameters"))
+        self._method_label.setText(tr("search.method"))
+        self._query_label.setText(tr("search.query"))
+        self._query_edit.setPlaceholderText(tr("search.query_placeholder"))
+        self._year_from_label.setText(tr("search.year_from"))
+        self._year_from_edit.setPlaceholderText(tr("search.year_from_placeholder"))
+        self._year_to_label.setText(tr("search.year_to"))
+        self._year_to_edit.setPlaceholderText(tr("search.year_to_placeholder"))
+        self._max_results_label.setText(tr("search.max_results"))
+        if self._search_btn.isEnabled():
+            self._search_btn.setText(tr("search.search_btn"))
+        else:
+            self._search_btn.setText(tr("search.searching_btn"))
+
+        # Results
+        self._results_group.setTitle(tr("results.title"))
+        self._results_table.setHorizontalHeaderLabels(
+            ["", tr("results.col.title"), tr("results.col.authors"),
+             tr("results.col.journal"), tr("results.col.year")]
+        )
+        self._select_all_btn.setText(tr("results.select_all"))
+        self._deselect_all_btn.setText(tr("results.deselect_all"))
+        self._download_btn.setText(tr("results.download_selected"))
+
+        # History tab
+        self._history_table.setHorizontalHeaderLabels(
+            [tr("history.col.date"), tr("history.col.method"),
+             tr("history.col.query"), tr("history.col.results")]
+        )
+        self._reload_history_btn.setText(tr("history.reload"))
+        self._delete_history_btn.setText(tr("history.delete"))
+        self._clear_history_btn.setText(tr("history.clear"))
+
+        # Settings tab
+        self._settings_section_label.setText(tr("settings.quick_settings"))
+        self._settings_note_label.setText(tr("settings.note"))
+        self._settings_dir_label.setText(tr("settings.download_dir"))
+        self._settings_browse_btn.setText(tr("settings.browse"))
+        self._settings_headless_label.setText(tr("settings.headless"))
+
+        # Status bar
+        self._app_status_bar.set_message(tr("status.ready"))
+
     # ── Slots: about ─────────────────────────────────────────────────────────
 
     def _show_about(self) -> None:
         QMessageBox.about(
             self,
-            f"About {config.APP_NAME}",
-            f"<b>{config.APP_NAME}</b> v{config.APP_VERSION}<br><br>"
-            "Search and download papers from CNKI using your school account.<br><br>"
-            "Built with Python, PyQt6, and Selenium.",
+            tr("about.title", app_name=config.APP_NAME),
+            tr("about.text", app_name=config.APP_NAME, version=config.APP_VERSION),
         )
 
     # ── Window close ─────────────────────────────────────────────────────────
@@ -677,8 +802,8 @@ class MainWindow(QMainWindow):
         if self._downloader.is_running:
             reply = QMessageBox.question(
                 self,
-                "Downloads in Progress",
-                "A download is still running. Quit anyway?",
+                tr("msg.downloads_in_progress_title"),
+                tr("msg.downloads_in_progress"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
