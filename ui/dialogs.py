@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 import config
 from utils.logger import get_logger
+from utils.translator import tr
 
 logger = get_logger("cnki_downloader.dialogs")
 
@@ -39,7 +40,7 @@ class LoginDialog(QDialog):
     def __init__(self, settings, parent=None) -> None:
         super().__init__(parent)
         self._settings = settings
-        self.setWindowTitle("Login – School Portal")
+        self.setWindowTitle(tr("login.title"))
         self.setMinimumWidth(420)
         self._build_ui()
         self._load_saved()
@@ -47,25 +48,25 @@ class LoginDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        title = QLabel("<b>Sign in with your school account</b>")
+        title = QLabel(tr("login.heading"))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
         form = QFormLayout()
 
         self._portal_edit = QLineEdit()
-        self._portal_edit.setPlaceholderText("https://your-school-portal/login")
-        form.addRow("Portal URL:", self._portal_edit)
+        self._portal_edit.setPlaceholderText(tr("login.portal_placeholder"))
+        form.addRow(tr("login.portal_url"), self._portal_edit)
 
         self._user_edit = QLineEdit()
-        self._user_edit.setPlaceholderText("Student / employee ID")
-        form.addRow("Username:", self._user_edit)
+        self._user_edit.setPlaceholderText(tr("login.username_placeholder"))
+        form.addRow(tr("login.username"), self._user_edit)
 
         self._pass_edit = QLineEdit()
         self._pass_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("Password:", self._pass_edit)
+        form.addRow(tr("login.password"), self._pass_edit)
 
-        self._save_cb = QCheckBox("Remember credentials (stored locally)")
+        self._save_cb = QCheckBox(tr("login.remember"))
         form.addRow("", self._save_cb)
 
         layout.addLayout(form)
@@ -93,10 +94,10 @@ class LoginDialog(QDialog):
 
     def accept(self) -> None:
         if not self._user_edit.text().strip():
-            self._status_label.setText("Username is required.")
+            self._status_label.setText(tr("login.username_required"))
             return
         if not self._pass_edit.text():
-            self._status_label.setText("Password is required.")
+            self._status_label.setText(tr("login.password_required"))
             return
 
         # Persist settings
@@ -146,7 +147,7 @@ class CookieLoginDialog(QDialog):
     def __init__(self, settings, parent=None) -> None:
         super().__init__(parent)
         self._settings = settings
-        self.setWindowTitle("Login with Browser Cookies")
+        self.setWindowTitle(tr("cookie_login.title"))
         self.setMinimumWidth(520)
         self._cookies: List[Dict[str, str]] = []
         self._build_ui()
@@ -154,22 +155,16 @@ class CookieLoginDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        title = QLabel("<b>Paste cookies from your browser</b>")
+        title = QLabel(tr("cookie_login.heading"))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        instructions = QLabel(
-            "Open your browser where you are already logged in to CNKI, "
-            "copy the cookie header value from the developer tools "
-            "(Network tab → any request → <i>Cookie</i> header), "
-            "and paste it below.\n\n"
-            "Expected format: <code>name1=value1; name2=value2; …</code>"
-        )
+        instructions = QLabel(tr("cookie_login.instructions"))
         instructions.setWordWrap(True)
         layout.addWidget(instructions)
 
         self._cookie_edit = QTextEdit()
-        self._cookie_edit.setPlaceholderText("name1=value1; name2=value2; …")
+        self._cookie_edit.setPlaceholderText(tr("cookie_login.placeholder"))
         self._cookie_edit.setMinimumHeight(100)
         layout.addWidget(self._cookie_edit)
 
@@ -188,15 +183,12 @@ class CookieLoginDialog(QDialog):
     def accept(self) -> None:
         raw = self._cookie_edit.toPlainText().strip()
         if not raw:
-            self._status_label.setText("Please paste your cookie string.")
+            self._status_label.setText(tr("cookie_login.empty"))
             return
 
         parsed = _parse_cookie_string(raw)
         if not parsed:
-            self._status_label.setText(
-                "Could not parse any cookies. "
-                "Use the format: name=value; name2=value2"
-            )
+            self._status_label.setText(tr("cookie_login.parse_error"))
             return
 
         self._cookies = parsed
@@ -218,7 +210,7 @@ class SettingsDialog(QDialog):
     def __init__(self, settings, parent=None) -> None:
         super().__init__(parent)
         self._settings = settings
-        self.setWindowTitle("Settings")
+        self.setWindowTitle(tr("settings_dialog.title"))
         self.setMinimumWidth(480)
         self._build_ui()
         self._populate()
@@ -227,49 +219,49 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # ── Download ─────────────────────────────────────────────────────────
-        dl_group = QGroupBox("Downloads")
+        dl_group = QGroupBox(tr("settings_dialog.downloads"))
         dl_layout = QFormLayout(dl_group)
 
         dl_row = QHBoxLayout()
         self._dir_edit = QLineEdit()
         self._dir_edit.setReadOnly(True)
-        browse_btn = QPushButton("Browse…")
+        browse_btn = QPushButton(tr("settings_dialog.browse"))
         browse_btn.clicked.connect(self._browse_dir)
         dl_row.addWidget(self._dir_edit)
         dl_row.addWidget(browse_btn)
-        dl_layout.addRow("Download directory:", dl_row)
+        dl_layout.addRow(tr("settings_dialog.download_dir"), dl_row)
 
         self._max_dl_spin = QSpinBox()
         self._max_dl_spin.setRange(1, 10)
-        dl_layout.addRow("Max concurrent downloads:", self._max_dl_spin)
+        dl_layout.addRow(tr("settings_dialog.max_concurrent"), self._max_dl_spin)
 
         layout.addWidget(dl_group)
 
         # ── Search ───────────────────────────────────────────────────────────
-        search_group = QGroupBox("Search")
+        search_group = QGroupBox(tr("settings_dialog.search"))
         search_layout = QFormLayout(search_group)
 
         self._default_method_combo = QComboBox()
         self._default_method_combo.addItems(config.SEARCH_METHODS)
-        search_layout.addRow("Default search method:", self._default_method_combo)
+        search_layout.addRow(tr("settings_dialog.default_method"), self._default_method_combo)
 
         self._results_per_page_spin = QSpinBox()
         self._results_per_page_spin.setRange(5, 100)
         self._results_per_page_spin.setSingleStep(5)
-        search_layout.addRow("Results per page:", self._results_per_page_spin)
+        search_layout.addRow(tr("settings_dialog.results_per_page"), self._results_per_page_spin)
 
         layout.addWidget(search_group)
 
         # ── Browser ──────────────────────────────────────────────────────────
-        browser_group = QGroupBox("Browser")
+        browser_group = QGroupBox(tr("settings_dialog.browser"))
         browser_layout = QFormLayout(browser_group)
 
-        self._headless_cb = QCheckBox("Run browser in headless mode (no visible window)")
+        self._headless_cb = QCheckBox(tr("settings_dialog.headless"))
         browser_layout.addRow(self._headless_cb)
 
         self._portal_edit = QLineEdit()
         self._portal_edit.setPlaceholderText(config.SCHOOL_PORTAL_URL)
-        browser_layout.addRow("School portal URL:", self._portal_edit)
+        browser_layout.addRow(tr("settings_dialog.portal_url"), self._portal_edit)
 
         layout.addWidget(browser_group)
 
@@ -301,7 +293,9 @@ class SettingsDialog(QDialog):
 
     def _browse_dir(self) -> None:
         current = self._dir_edit.text() or os.path.expanduser("~")
-        chosen = QFileDialog.getExistingDirectory(self, "Select download directory", current)
+        chosen = QFileDialog.getExistingDirectory(
+            self, tr("settings_dialog.select_dir"), current
+        )
         if chosen:
             self._dir_edit.setText(chosen)
 
@@ -329,7 +323,7 @@ class DownloadProgressDialog(QDialog):
     def __init__(self, total: int, parent=None) -> None:
         super().__init__(parent)
         self._total = total
-        self.setWindowTitle("Downloading…")
+        self.setWindowTitle(tr("download_progress.title"))
         self.setMinimumWidth(400)
         self.setModal(False)
         self._build_ui()
@@ -337,7 +331,7 @@ class DownloadProgressDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        self._current_label = QLabel("Preparing…")
+        self._current_label = QLabel(tr("download_progress.preparing"))
         layout.addWidget(self._current_label)
 
         self._progress_bar = QProgressBar()
@@ -345,24 +339,31 @@ class DownloadProgressDialog(QDialog):
         self._progress_bar.setValue(0)
         layout.addWidget(self._progress_bar)
 
-        self._summary_label = QLabel(f"0 / {self._total} completed")
+        self._summary_label = QLabel(
+            tr("download_progress.summary", current=0, total=self._total)
+        )
         layout.addWidget(self._summary_label)
 
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(tr("download_progress.cancel"))
         cancel_btn.clicked.connect(self.cancel_requested.emit)
         layout.addWidget(cancel_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
     def update_progress(self, current: int, total: int, filename: str) -> None:
         self._progress_bar.setRange(0, total)
         self._progress_bar.setValue(current)
-        self._current_label.setText(f"Downloading: {filename}")
-        self._summary_label.setText(f"{current} / {total} completed")
+        self._current_label.setText(
+            tr("download_progress.downloading", filename=filename)
+        )
+        self._summary_label.setText(
+            tr("download_progress.summary", current=current, total=total)
+        )
 
     def finish(self, success_count: int, fail_count: int) -> None:
-        self._current_label.setText("Done!")
+        self._current_label.setText(tr("download_progress.done"))
         self._summary_label.setText(
-            f"Completed: {success_count} succeeded, {fail_count} failed"
+            tr("download_progress.finished",
+               success=success_count, fail=fail_count)
         )
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(tr("download_progress.close"))
         close_btn.clicked.connect(self.accept)
         self.layout().addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)

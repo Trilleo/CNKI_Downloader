@@ -21,7 +21,8 @@ class StatusBar(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 6, 2)
 
-        self._label = QLabel("Ready")
+        from utils.translator import tr
+        self._label = QLabel(tr("status.ready"))
         self._label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self._progress = QProgressBar()
