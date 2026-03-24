@@ -185,6 +185,58 @@ class AuthManager:
             logger.error("WebDriver error during cookie login: %s", exc)
             return False
 
+    def login_with_redirect(self, url: str = "", poll_interval: float = 2,
+                            timeout: int = 300) -> bool:
+        """
+        Open a **visible** browser window at *url* (defaults to the CNKI FSSO
+        school-selection page) and wait for the user to complete the login
+        manually.
+
+        The method polls the current URL every *poll_interval* seconds.  Once
+        the browser navigates away from the login domain — or a CNKI session
+        cookie appears — the login is considered successful.
+
+        Returns *True* on success, *False* on timeout / failure.
+        """
+        url = url or config.CNKI_FSSO_URL
+        logger.info("Opening redirect login page: %s", url)
+
+        try:
+            # Redirect login MUST be visible so the user can interact.
+            self._ensure_driver_visible()
+
+            self._driver.get(url)
+            time.sleep(config.PAGE_LOAD_SLEEP)
+
+            start = time.time()
+            login_domain = "fsso.cnki.net"
+
+            while time.time() - start < timeout:
+                current = self._driver.current_url
+                # If the browser has left the FSSO login domain, the user
+                # has completed the school login flow.
+                if login_domain not in current.lower():
+                    self._logged_in = True
+                    logger.info("Redirect login successful (landed on %s)", current)
+                    return True
+
+                # Also check for a CNKI session cookie as an alternative signal.
+                for cookie in self._driver.get_cookies():
+                    if cookie.get("name") in ("ASP.NET_SessionId", "SID",
+                                               "cnki_token", "Ecp_LoginStamp"):
+                        self._logged_in = True
+                        logger.info("Redirect login successful (session cookie found)")
+                        return True
+
+                time.sleep(poll_interval)
+
+            logger.warning("Redirect login timed out after %ds", timeout)
+            return False
+
+        except WebDriverException as exc:
+            logger.error("WebDriver error during redirect login: %s", exc)
+            raise
+
     def logout(self) -> None:
         """Clear the browser session."""
         self._logged_in = False
@@ -238,6 +290,46 @@ class AuthManager:
             self._driver = webdriver.Chrome(options=options)
 
         logger.debug("WebDriver created (headless=%s)", headless)
+
+    def _ensure_driver_visible(self) -> None:
+        """Create a Chrome WebDriver in **visible** (non-headless) mode.
+
+        If a headless driver already exists it is quit first, because the user
+        must be able to interact with the browser during redirect login.
+        """
+        if self._driver is not None:
+            # If the current driver was started headless we need a new one.
+            if self._settings.get("headless_browser", True):
+                try:
+                    self._driver.quit()
+                except WebDriverException:
+                    pass
+                self._driver = None
+            else:
+                return  # already visible
+
+        options = ChromeOptions()
+        # Explicitly NOT headless
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1280,900")
+        prefs = {
+            "download.default_directory": self._settings.get(
+                "download_dir", config.DEFAULT_SETTINGS["download_dir"]
+            ),
+            "download.prompt_for_download": False,
+            "plugins.always_open_pdf_externally": True,
+        }
+        options.add_experimental_option("prefs", prefs)
+
+        if _WDM_AVAILABLE:
+            service = ChromeService(ChromeDriverManager().install())
+            self._driver = webdriver.Chrome(service=service, options=options)
+        else:
+            self._driver = webdriver.Chrome(options=options)
+
+        logger.debug("WebDriver created (visible / non-headless) for redirect login")
 
     def _find_field(self, wait: WebDriverWait, locators: list) -> Optional[object]:
         """Try each locator in turn and return the first visible element."""

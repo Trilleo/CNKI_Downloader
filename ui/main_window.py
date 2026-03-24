@@ -130,6 +130,10 @@ class MainWindow(QMainWindow):
         self._cookie_login_action.triggered.connect(self._open_cookie_login_dialog)
         self._file_menu.addAction(self._cookie_login_action)
 
+        self._fsso_login_action = QAction(tr("menu.file.fsso_login"), self)
+        self._fsso_login_action.triggered.connect(self._open_fsso_login)
+        self._file_menu.addAction(self._fsso_login_action)
+
         self._logout_action = QAction(tr("menu.file.logout"), self)
         self._logout_action.triggered.connect(self._logout)
         self._file_menu.addAction(self._logout_action)
@@ -418,7 +422,20 @@ class MainWindow(QMainWindow):
             self.setEnabled(False)
             self.repaint()
 
-            ok = self._auth.login(dlg.username, dlg.password, dlg.portal_url)
+            try:
+                ok = self._auth.login(dlg.username, dlg.password, dlg.portal_url)
+            except Exception as exc:
+                logger.error("Unexpected error during login: %s", exc)
+                ok = False
+                self.setEnabled(True)
+                self._app_status_bar.hide_progress()
+                QMessageBox.critical(
+                    self,
+                    tr("msg.login_error_title"),
+                    tr("msg.login_error", message=str(exc)),
+                )
+                return
+
             self.setEnabled(True)
             self._app_status_bar.hide_progress()
 
@@ -453,7 +470,20 @@ class MainWindow(QMainWindow):
             self.setEnabled(False)
             self.repaint()
 
-            ok = self._auth.login_with_cookies(dlg.cookies)
+            try:
+                ok = self._auth.login_with_cookies(dlg.cookies)
+            except Exception as exc:
+                logger.error("Unexpected error during cookie login: %s", exc)
+                ok = False
+                self.setEnabled(True)
+                self._app_status_bar.hide_progress()
+                QMessageBox.critical(
+                    self,
+                    tr("msg.login_error_title"),
+                    tr("msg.login_error", message=str(exc)),
+                )
+                return
+
             self.setEnabled(True)
             self._app_status_bar.hide_progress()
 
@@ -476,6 +506,59 @@ class MainWindow(QMainWindow):
                     tr("msg.cookie_login_failed_title"),
                     tr("msg.cookie_login_failed"),
                 )
+
+    def _open_fsso_login(self) -> None:
+        """Open a visible browser to the CNKI FSSO page for school login."""
+        reply = QMessageBox.information(
+            self,
+            tr("fsso_login.title"),
+            tr("fsso_login.instructions"),
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Ok:
+            return
+
+        self._app_status_bar.set_message(tr("status.logging_in_fsso"))
+        self._app_status_bar.show_progress(0, 0)
+        self.setEnabled(False)
+        self.repaint()
+
+        try:
+            ok = self._auth.login_with_redirect()
+        except Exception as exc:
+            logger.error("Unexpected error during FSSO login: %s", exc)
+            ok = False
+            self.setEnabled(True)
+            self._app_status_bar.hide_progress()
+            QMessageBox.critical(
+                self,
+                tr("msg.login_error_title"),
+                tr("msg.login_error", message=str(exc)),
+            )
+            return
+
+        self.setEnabled(True)
+        self._app_status_bar.hide_progress()
+
+        if ok:
+            self._login_state = "logged_in"
+            self._login_status_label.setText(tr("banner.fsso_logged_in"))
+            self._login_banner.setStyleSheet(
+                "background-color: #d4edda; border-radius: 4px;"
+            )
+            self._app_status_bar.set_message(tr("status.fsso_login_ok"))
+        else:
+            self._login_state = "failed"
+            self._login_banner.setStyleSheet(
+                "background-color: #f8d7da; border-radius: 4px;"
+            )
+            self._login_status_label.setText(tr("banner.fsso_login_failed"))
+            self._app_status_bar.set_message(tr("status.fsso_login_failed"))
+            QMessageBox.warning(
+                self,
+                tr("msg.fsso_login_failed_title"),
+                tr("msg.fsso_login_failed"),
+            )
 
     def _logout(self) -> None:
         self._auth.logout()
@@ -713,6 +796,7 @@ class MainWindow(QMainWindow):
         self._file_menu.setTitle(tr("menu.file"))
         self._login_action.setText(tr("menu.file.login"))
         self._cookie_login_action.setText(tr("menu.file.cookie_login"))
+        self._fsso_login_action.setText(tr("menu.file.fsso_login"))
         self._logout_action.setText(tr("menu.file.logout"))
         self._settings_action.setText(tr("menu.file.settings"))
         self._quit_action.setText(tr("menu.file.quit"))

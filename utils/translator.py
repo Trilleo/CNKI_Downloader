@@ -165,6 +165,31 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "Use the format: name=value; name2=value2"
         ),
 
+        # FSSO redirect login
+        "menu.file.fsso_login": "Login with School &Portal (FSSO)…",
+        "fsso_login.title": "School Portal Login (FSSO)",
+        "fsso_login.heading": "<b>Login via school portal (FSSO)</b>",
+        "fsso_login.instructions": (
+            "A browser window will open the CNKI school login page.\n"
+            "Select your institution, log in with your school account, "
+            "and wait for the process to complete.\n\n"
+            "Do <b>not</b> close the browser window manually."
+        ),
+        "status.logging_in_fsso": "Waiting for school portal login…",
+        "status.fsso_login_ok": "School portal login successful.",
+        "status.fsso_login_failed": "School portal login failed.",
+        "banner.fsso_logged_in": "✅  Logged in via school portal (FSSO)",
+        "banner.fsso_login_failed": (
+            "❌  School portal login failed – timed out or browser was closed"
+        ),
+        "msg.fsso_login_failed_title": "School Portal Login Failed",
+        "msg.fsso_login_failed": (
+            "Could not complete the school portal login.\n"
+            "The login may have timed out or the browser window was closed."
+        ),
+        "msg.login_error_title": "Login Error",
+        "msg.login_error": "An unexpected error occurred during login:\n{message}",
+
         # Settings dialog
         "settings_dialog.title": "Settings",
         "settings_dialog.downloads": "Downloads",
@@ -333,6 +358,29 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "cookie_login.placeholder": "name1=value1; name2=value2; …",
         "cookie_login.empty": "请粘贴 Cookie 字符串。",
         "cookie_login.parse_error": "无法解析 Cookie。请使用格式：name=value; name2=value2",
+
+        # FSSO redirect login
+        "menu.file.fsso_login": "学校门户登录 (FSSO)(&P)…",
+        "fsso_login.title": "学校门户登录 (FSSO)",
+        "fsso_login.heading": "<b>通过学校门户 (FSSO) 登录</b>",
+        "fsso_login.instructions": (
+            "将打开浏览器窗口跳转到 CNKI 学校登录页面。\n"
+            "请选择您的学校，使用学校账号登录，"
+            "等待流程完成。\n\n"
+            "<b>请勿</b>手动关闭浏览器窗口。"
+        ),
+        "status.logging_in_fsso": "正在等待学校门户登录…",
+        "status.fsso_login_ok": "学校门户登录成功。",
+        "status.fsso_login_failed": "学校门户登录失败。",
+        "banner.fsso_logged_in": "✅  已通过学校门户 (FSSO) 登录",
+        "banner.fsso_login_failed": "❌  学校门户登录失败 - 超时或浏览器已关闭",
+        "msg.fsso_login_failed_title": "学校门户登录失败",
+        "msg.fsso_login_failed": (
+            "无法完成学校门户登录。\n"
+            "登录可能已超时或浏览器窗口已关闭。"
+        ),
+        "msg.login_error_title": "登录错误",
+        "msg.login_error": "登录过程中发生意外错误：\n{message}",
 
         # Settings dialog
         "settings_dialog.title": "设置",
