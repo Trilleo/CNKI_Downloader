@@ -24,6 +24,7 @@ CNKI_SEARCH_URL = "https://kns.cnki.net/kns8/defaultresult/index"
 # ─── School Portal ─────────────────────────────────────────────────────────────
 # Update this URL to match your institution's CNKI login portal.
 SCHOOL_PORTAL_URL = "https://sso.cnki.net/ssoserver/login"
+CNKI_FSSO_URL = "https://fsso.cnki.net/MLogin.aspx"
 
 # ─── Search Methods ────────────────────────────────────────────────────────────
 SEARCH_METHODS = [
