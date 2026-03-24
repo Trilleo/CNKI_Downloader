@@ -31,6 +31,11 @@ from utils.logger import get_logger
 
 logger = get_logger("cnki_downloader.auth")
 
+# Cookie names that indicate a successful CNKI session.
+_CNKI_SESSION_COOKIES = frozenset({
+    "ASP.NET_SessionId", "SID", "cnki_token", "Ecp_LoginStamp",
+})
+
 
 class AuthManager:
     """Manage a Selenium WebDriver session and school-portal authentication."""
@@ -185,8 +190,9 @@ class AuthManager:
             logger.error("WebDriver error during cookie login: %s", exc)
             return False
 
-    def login_with_redirect(self, url: str = "", poll_interval: float = 2,
-                            timeout: int = 300) -> bool:
+    def login_with_redirect(
+        self, url: str = "", poll_interval: float = 2, timeout: int = 300,
+    ) -> bool:
         """
         Open a **visible** browser window at *url* (defaults to the CNKI FSSO
         school-selection page) and wait for the user to complete the login
@@ -222,8 +228,7 @@ class AuthManager:
 
                 # Also check for a CNKI session cookie as an alternative signal.
                 for cookie in self._driver.get_cookies():
-                    if cookie.get("name") in ("ASP.NET_SessionId", "SID",
-                                               "cnki_token", "Ecp_LoginStamp"):
+                    if cookie.get("name") in _CNKI_SESSION_COOKIES:
                         self._logged_in = True
                         logger.info("Redirect login successful (session cookie found)")
                         return True

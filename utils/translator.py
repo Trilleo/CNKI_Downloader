@@ -168,7 +168,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # FSSO redirect login
         "menu.file.fsso_login": "Login with School &Portal (FSSO)…",
         "fsso_login.title": "School Portal Login (FSSO)",
-        "fsso_login.heading": "<b>Login via school portal (FSSO)</b>",
         "fsso_login.instructions": (
             "A browser window will open the CNKI school login page.\n"
             "Select your institution, log in with your school account, "
@@ -362,7 +361,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # FSSO redirect login
         "menu.file.fsso_login": "学校门户登录 (FSSO)(&P)…",
         "fsso_login.title": "学校门户登录 (FSSO)",
-        "fsso_login.heading": "<b>通过学校门户 (FSSO) 登录</b>",
         "fsso_login.instructions": (
             "将打开浏览器窗口跳转到 CNKI 学校登录页面。\n"
             "请选择您的学校，使用学校账号登录，"
