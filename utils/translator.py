@@ -150,16 +150,36 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         # Cookie login dialog
         "cookie_login.title": "Login with Browser Cookies",
-        "cookie_login.heading": "<b>Paste cookies from your browser</b>",
+        "cookie_login.heading": "<b>Capture or paste cookies from your browser</b>",
+        "cookie_login.auto_group": "Auto Capture",
+        "cookie_login.auto_instructions": (
+            "Select the browser where you are logged in to CNKI and click "
+            "<b>Capture Cookies</b> to read them automatically."
+        ),
+        "cookie_login.capture_btn": "Capture Cookies",
+        "cookie_login.browser_not_supported": "{browser} is not supported on this system.",
+        "cookie_login.capture_error": (
+            "Could not read cookies from {browser}. "
+            "Make sure the browser is closed or try the manual method below."
+        ),
+        "cookie_login.no_cookies_found": (
+            "No CNKI cookies found in {browser}. "
+            "Please ensure you are logged in to CNKI in that browser."
+        ),
+        "cookie_login.capture_ok": (
+            "✅  Captured {count} cookie(s) from {browser}. "
+            "Click OK to log in."
+        ),
+        "cookie_login.manual_group": "Manual Paste (Fallback)",
         "cookie_login.instructions": (
-            "Open your browser where you are already logged in to CNKI, "
+            "Alternatively, open your browser where you are already logged in to CNKI, "
             "copy the cookie header value from the developer tools "
             "(Network tab → any request → <i>Cookie</i> header), "
             "and paste it below.\n\n"
             "Expected format: <code>name1=value1; name2=value2; …</code>"
         ),
         "cookie_login.placeholder": "name1=value1; name2=value2; …",
-        "cookie_login.empty": "Please paste your cookie string.",
+        "cookie_login.empty": "Please capture or paste your cookie string.",
         "cookie_login.parse_error": (
             "Could not parse any cookies. "
             "Use the format: name=value; name2=value2"
@@ -347,15 +367,34 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
         # Cookie login dialog
         "cookie_login.title": "使用浏览器 Cookie 登录",
-        "cookie_login.heading": "<b>粘贴浏览器中的 Cookie</b>",
+        "cookie_login.heading": "<b>自动获取或粘贴浏览器中的 Cookie</b>",
+        "cookie_login.auto_group": "自动获取",
+        "cookie_login.auto_instructions": (
+            "选择已登录 CNKI 的浏览器，点击 <b>获取 Cookie</b> 自动读取。"
+        ),
+        "cookie_login.capture_btn": "获取 Cookie",
+        "cookie_login.browser_not_supported": "当前系统不支持 {browser}。",
+        "cookie_login.capture_error": (
+            "无法从 {browser} 读取 Cookie。"
+            "请确保浏览器已关闭，或使用下方手动粘贴方式。"
+        ),
+        "cookie_login.no_cookies_found": (
+            "在 {browser} 中未找到 CNKI Cookie。"
+            "请确认您已在该浏览器中登录 CNKI。"
+        ),
+        "cookie_login.capture_ok": (
+            "✅  已从 {browser} 获取 {count} 条 Cookie。"
+            "点击「确定」登录。"
+        ),
+        "cookie_login.manual_group": "手动粘贴（备选方案）",
         "cookie_login.instructions": (
-            "打开已登录 CNKI 的浏览器，从开发者工具"
+            "也可以打开已登录 CNKI 的浏览器，从开发者工具"
             "（网络标签页 → 任意请求 → <i>Cookie</i> 头部）"
             "复制 Cookie 值，粘贴到下方。\n\n"
             "格式：<code>name1=value1; name2=value2; …</code>"
         ),
         "cookie_login.placeholder": "name1=value1; name2=value2; …",
-        "cookie_login.empty": "请粘贴 Cookie 字符串。",
+        "cookie_login.empty": "请先获取或粘贴 Cookie 字符串。",
         "cookie_login.parse_error": "无法解析 Cookie。请使用格式：name=value; name2=value2",
 
         # FSSO redirect login

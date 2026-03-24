@@ -25,11 +25,31 @@ from PyQt6.QtWidgets import (
     QGroupBox,
 )
 
+try:
+    import browser_cookie3
+    _BC3_AVAILABLE = True
+except ImportError:
+    browser_cookie3 = None  # type: ignore[assignment]
+    _BC3_AVAILABLE = False
+
 import config
 from utils.logger import get_logger
 from utils.translator import tr
 
 logger = get_logger("cnki_downloader.dialogs")
+
+# Mapping of UI browser names to browser_cookie3 loader functions.
+_BROWSER_LOADERS: Dict[str, str] = {
+    "Chrome": "chrome",
+    "Firefox": "firefox",
+    "Edge": "edge",
+    "Opera": "opera",
+    "Brave": "brave",
+    "Chromium": "chromium",
+}
+
+# Domains from which CNKI session cookies should be captured.
+_CNKI_DOMAINS = (".cnki.net",)
 
 
 # ── Login dialog ─────────────────────────────────────────────────────────────
@@ -142,7 +162,8 @@ def _parse_cookie_string(raw: str) -> List[Dict[str, str]]:
 
 
 class CookieLoginDialog(QDialog):
-    """Dialog that lets users paste browser cookies to authenticate."""
+    """Dialog that captures browser cookies – either automatically from an
+    installed browser or by manual paste as a fallback."""
 
     def __init__(self, settings, parent=None) -> None:
         super().__init__(parent)
@@ -159,15 +180,49 @@ class CookieLoginDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
+        # ── Auto-capture section ─────────────────────────────────────────
+        if _BC3_AVAILABLE:
+            auto_group = QGroupBox(tr("cookie_login.auto_group"))
+            auto_layout = QVBoxLayout(auto_group)
+
+            auto_instructions = QLabel(tr("cookie_login.auto_instructions"))
+            auto_instructions.setWordWrap(True)
+            auto_layout.addWidget(auto_instructions)
+
+            row = QHBoxLayout()
+            self._browser_combo = QComboBox()
+            self._browser_combo.addItems(list(_BROWSER_LOADERS.keys()))
+            row.addWidget(self._browser_combo)
+
+            capture_btn = QPushButton(tr("cookie_login.capture_btn"))
+            capture_btn.clicked.connect(self._auto_capture)
+            row.addWidget(capture_btn)
+
+            auto_layout.addLayout(row)
+
+            self._auto_status = QLabel("")
+            self._auto_status.setWordWrap(True)
+            self._auto_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            auto_layout.addWidget(self._auto_status)
+
+            layout.addWidget(auto_group)
+
+        # ── Manual fallback section ──────────────────────────────────────
+        manual_group = QGroupBox(tr("cookie_login.manual_group"))
+        manual_layout = QVBoxLayout(manual_group)
+
         instructions = QLabel(tr("cookie_login.instructions"))
         instructions.setWordWrap(True)
-        layout.addWidget(instructions)
+        manual_layout.addWidget(instructions)
 
         self._cookie_edit = QTextEdit()
         self._cookie_edit.setPlaceholderText(tr("cookie_login.placeholder"))
         self._cookie_edit.setMinimumHeight(100)
-        layout.addWidget(self._cookie_edit)
+        manual_layout.addWidget(self._cookie_edit)
 
+        layout.addWidget(manual_group)
+
+        # ── Status / buttons ─────────────────────────────────────────────
         self._status_label = QLabel("")
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_label.setStyleSheet("color: red;")
@@ -179,6 +234,56 @@ class CookieLoginDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    # ── Auto-capture ─────────────────────────────────────────────────────
+
+    def _auto_capture(self) -> None:
+        """Read CNKI cookies from the selected browser's cookie store."""
+        browser_name = self._browser_combo.currentText()
+        loader_attr = _BROWSER_LOADERS.get(browser_name)
+        if not loader_attr or browser_cookie3 is None:
+            return
+
+        loader = getattr(browser_cookie3, loader_attr, None)
+        if loader is None:
+            self._auto_status.setStyleSheet("color: red;")
+            self._auto_status.setText(
+                tr("cookie_login.browser_not_supported", browser=browser_name)
+            )
+            return
+
+        try:
+            cj = loader(domain_name=".cnki.net")
+            cookies: List[Dict[str, str]] = [
+                {"name": c.name, "value": c.value}
+                for c in cj
+                if c.name and c.value
+            ]
+        except Exception as exc:
+            logger.warning("Failed to capture cookies from %s: %s", browser_name, exc)
+            self._auto_status.setStyleSheet("color: red;")
+            self._auto_status.setText(
+                tr("cookie_login.capture_error", browser=browser_name)
+            )
+            return
+
+        if not cookies:
+            self._auto_status.setStyleSheet("color: orange;")
+            self._auto_status.setText(
+                tr("cookie_login.no_cookies_found", browser=browser_name)
+            )
+            return
+
+        # Populate the manual text area so the user can review before OK.
+        cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+        self._cookie_edit.setPlainText(cookie_str)
+
+        self._auto_status.setStyleSheet("color: green;")
+        self._auto_status.setText(
+            tr("cookie_login.capture_ok", count=len(cookies), browser=browser_name)
+        )
+
+    # ── Accept / accessors ───────────────────────────────────────────────
 
     def accept(self) -> None:
         raw = self._cookie_edit.toPlainText().strip()
@@ -193,8 +298,6 @@ class CookieLoginDialog(QDialog):
 
         self._cookies = parsed
         super().accept()
-
-    # ── Accessors ────────────────────────────────────────────────────────────
 
     @property
     def cookies(self) -> List[Dict[str, str]]:
